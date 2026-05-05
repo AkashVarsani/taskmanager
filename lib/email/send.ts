@@ -1,6 +1,15 @@
 import { Resend } from "resend";
 
-export const resend = new Resend(process.env.RESEND_API_KEY!);
+// Lazy initialization of Resend client to avoid build-time errors
+let resendInstance: Resend | null = null;
+
+function getResendClient() {
+  if (!resendInstance) {
+    const apiKey = process.env.RESEND_API_KEY || "re_placeholder";
+    resendInstance = new Resend(apiKey);
+  }
+  return resendInstance;
+}
 
 const FROM_ADDRESS =
   process.env.RESEND_FROM ?? "TaskFlow <noreply@taskflow.app>";
@@ -20,7 +29,8 @@ export async function sendEmail({
   const isDev = process.env.NODE_ENV === "development";
   const hasValidKey = process.env.RESEND_API_KEY && 
                       process.env.RESEND_API_KEY !== "re_your_resend_api_key" &&
-                      !process.env.RESEND_API_KEY.startsWith("re_123");
+                      !process.env.RESEND_API_KEY.startsWith("re_123") &&
+                      process.env.RESEND_API_KEY !== "re_placeholder";
 
   if (isDev && !hasValidKey) {
     console.log("\n📧 [EMAIL - DEV MODE] Would send email:");
@@ -32,6 +42,7 @@ export async function sendEmail({
   }
 
   try {
+    const resend = getResendClient();
     const { data, error } = await resend.emails.send({
       from: FROM_ADDRESS,
       to: Array.isArray(to) ? to : [to],
