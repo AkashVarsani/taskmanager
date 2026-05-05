@@ -48,7 +48,7 @@ export default async function ProjectDetailPage({
       );
     }
 
-    return <ProjectDetailClient project={project} />;
+    return <ProjectDetailClient project={project} currentUserId={session.user.id} />;
   } catch (error) {
     console.error("Error loading project:", error);
     return (

@@ -61,6 +61,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const body = CreateTaskSchema.parse(await req.json());
 
+    // Validate that assignee is a project member
+    if (body.assigneeId) {
+      const assigneeMember = await db.projectMember.findUnique({
+        where: { projectId_userId: { projectId: id, userId: body.assigneeId } },
+      });
+      if (!assigneeMember) {
+        return NextResponse.json({ error: "Assignee must be a project member" }, { status: 400 });
+      }
+    }
+
     // Get max position for ordering
     const maxPos = await db.task.aggregate({
       where: { projectId: id, status: body.status ?? "TODO" },
