@@ -22,12 +22,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
   return NextResponse.json(invitation);
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+// Accept invitation
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { token } = await params;
-  const invitation = await db.invitation.findUnique({ where: { token } });
+  const invitation = await db.invitation.findUnique({ 
+    where: { token },
+    include: { project: { select: { name: true } } }
+  });
 
   if (!invitation) return NextResponse.json({ error: "Invitation not found" }, { status: 404 });
   if (invitation.status !== "PENDING") return NextResponse.json({ error: "Invitation already used" }, { status: 400 });
@@ -48,7 +52,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   });
   if (existing) {
     await db.invitation.update({ where: { token }, data: { status: "ACCEPTED" } });
-    return NextResponse.json({ success: true, projectId: invitation.projectId });
+    return NextResponse.json({ success: true, projectId: invitation.projectId, message: "You are already a member of this project" });
   }
 
   await db.$transaction([
@@ -62,5 +66,36 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     db.invitation.update({ where: { token }, data: { status: "ACCEPTED" } }),
   ]);
 
-  return NextResponse.json({ success: true, projectId: invitation.projectId });
+  return NextResponse.json({ 
+    success: true, 
+    projectId: invitation.projectId,
+    message: `You've joined ${invitation.project.name}!`
+  });
+}
+
+// Decline invitation
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+  const session = await auth();
+  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { token } = await params;
+  const invitation = await db.invitation.findUnique({ where: { token } });
+
+  if (!invitation) return NextResponse.json({ error: "Invitation not found" }, { status: 404 });
+  if (invitation.status !== "PENDING") return NextResponse.json({ error: "Invitation already used" }, { status: 400 });
+
+  const user = await db.user.findUnique({ where: { id: session.user.id } });
+  if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+  if (user.email?.toLowerCase() !== invitation.email.toLowerCase()) {
+    return NextResponse.json({ error: "This invitation was sent to a different email address" }, { status: 403 });
+  }
+
+  await db.invitation.update({ where: { token }, data: { status: "DECLINED" } });
+
+  return NextResponse.json({ success: true, message: "Invitation declined" });
+}
+
+// Legacy POST endpoint for backward compatibility
+export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+  return PATCH(req, { params });
 }
